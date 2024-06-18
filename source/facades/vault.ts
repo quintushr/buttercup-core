@@ -64,11 +64,10 @@ export function consumeGroupFacade(group: Group, facade: GroupFacade) {
 }
 
 /**
- * Consume a vault facade and apply the differences to the vault
- * instance
- * @param vault The vault instance to apply to
- * @param facade The facade to apply
- * @param options Options for the consumption
+ * Consume a vault facade and apply the differences to the vault instance.
+ * @param {Vault} vault - The vault instance to apply to.
+ * @param {VaultFacade} facade - The facade to apply.
+ * @param {ConsumeVaultFacadeOptions} options - Options for the consumption.
  * @memberof module:Buttercup
  */
 export function consumeVaultFacade(
@@ -76,173 +75,153 @@ export function consumeVaultFacade(
     facade: VaultFacade,
     options: ConsumeVaultFacadeOptions = {}
 ) {
-    if (facade._ver !== FACADE_VERSION) {
-        throw new Error("Invalid vault facade version");
+    if (!facade || facade._ver !== FACADE_VERSION) {
+        throw new Error("Invalid or incompatible vault facade version");
     }
-    if (!facade || (facade && facade.type !== "vault")) {
-        throw new Error(
-            `Failed consuming vault facade: Second parameter expected to be a vault facade, got: ${facade.type}`
-        );
+    if (facade.type !== "vault") {
+        throw new Error(`Failed consuming vault facade: Expected facade type "vault", got: ${facade.type}`);
     }
+
     const { mergeMode = false } = options;
-    const { id, type, attributes, groups, entries } = facade;
-    if (type !== "vault") {
-        throw new Error(`Failed consuming vault facade: Invalid facade type: ${type}`);
-    }
+    const { id, attributes, groups, entries } = facade;
+
     if (!mergeMode && id !== vault.id) {
-        throw new Error(
-            `Failed consuming vault facade: Provided facade ID (${id}) does not match target vault ID: ${vault.id}`
-        );
+        throw new Error(`Failed consuming vault facade: Facade ID (${id}) does not match vault ID (${vault.id})`);
     }
+
     const newIDLookup = {};
+
     // Create comparison facade
-    let {
-        groups: currentGroups,
-        entries: currentEntries,
-        attributes: currentAttributes
-    } = createVaultFacade(vault);
-    // Handle group removal
-    if (!mergeMode) {
-        currentGroups.forEach((currentGroupFacade) => {
-            const existing = groups.find((group) => group.id === currentGroupFacade.id);
-            if (!existing) {
-                // Removed, so delete
-                const targetItem = vault.findGroupByID(currentGroupFacade.id);
-                if (targetItem) {
-                    // Only attempt deleting if it comes back as a result. It's possible
-                    // that if a parent was deleted, the children were also removed and
-                    // this call to `findGroupByID` might return nothing..
-                    targetItem.delete();
+    let { groups: currentGroups, entries: currentEntries, attributes: currentAttributes } = createVaultFacade(vault);
+
+    function handleGroupRemoval() {
+        if (!mergeMode) {
+            currentGroups.forEach((currentGroupFacade) => {
+                if (!groups.some(group => group.id === currentGroupFacade.id)) {
+                    const targetGroup = vault.findGroupByID(currentGroupFacade.id);
+                    if (targetGroup) targetGroup.delete();
                 }
-            }
-        });
+            });
+        }
     }
-    // Update facade properties after groups deletion
-    currentGroups = getGroupsFacades(vault);
-    // Manage other group operations
-    let groupsLeft = [...groups];
-    while (groupsLeft.length > 0) {
-        let originalLength = groupsLeft.length;
-        groupsLeft = groupsLeft.filter((groupRaw) => {
-            const groupFacade = Object.assign({}, groupRaw);
-            const groupIDTargetedNew = idSignifiesNew(groupFacade.id, mergeMode);
-            if (!groupFacade.id || groupIDTargetedNew) {
-                let targetParentID = groupFacade.parentID;
-                if (idSignifiesNew(targetParentID, mergeMode)) {
-                    if (newIDLookup[targetParentID]) {
-                        targetParentID = newIDLookup[targetParentID];
+
+    function processGroups() {
+        let groupsLeft = [...groups];
+        while (groupsLeft.length > 0) {
+            const originalLength = groupsLeft.length;
+            groupsLeft = groupsLeft.filter((groupRaw) => {
+                const groupFacade = { ...groupRaw };
+                const groupIDTargetedNew = idSignifiesNew(groupFacade.id, mergeMode);
+
+                if (!groupFacade.id || groupIDTargetedNew) {
+                    let targetParentID = groupFacade.parentID;
+                    if (idSignifiesNew
+
+(targetParentID, mergeMode)) {
+                        targetParentID = newIDLookup[targetParentID] || targetParentID;
+                    }
+
+                    const targetParent = targetParentID === "0" ? vault : vault.findGroupByID(targetParentID);
+                    if (targetParent) {
+                        const newGroupInst = targetParent.createGroup(groupFacade.title);
+                        if (groupIDTargetedNew) {
+                            newIDLookup[groupFacade.id] = newGroupInst.id;
+                        }
+                        groupFacade.id = newGroupInst.id;
                     } else {
-                        // No parent created yet, stalled
-                        return true; // keep in loop - not ready
+                        return true; // Parent not ready, stall this group
+                    }
+                } else {
+                    const refGroup = vault.findGroupByID(groupFacade.id);
+                    const refGroupParent = refGroup.getParentGroup();
+                    if ((refGroupParent === null && groupFacade.parentID !== "0") ||
+                        (refGroupParent && refGroupParent.id !== groupFacade.parentID)) {
+                        refGroup.moveTo(groupFacade.parentID === "0" ? vault : vault.findGroupByID(groupFacade.parentID));
                     }
                 }
-                // Handle group addition
-                const targetParent =
-                    targetParentID === "0" ? vault : vault.findGroupByID(targetParentID);
-                const newGroupInst = targetParent.createGroup(groupFacade.title);
-                if (groupIDTargetedNew) {
-                    newIDLookup[`${groupFacade.id}`] = newGroupInst.id;
-                }
-                groupFacade.id = newGroupInst.id;
-            } else {
-                if (!currentGroups.find((group) => group.id === groupFacade.id)) {
-                    // Group had an ID which is now gone, so it was removed
-                    return;
-                }
-                // Handle group move
-                const { id: groupID, parentID: groupParentID } = groupFacade;
-                const ref = vault.findGroupByID(groupID);
-                const refGroup = ref.getParentGroup();
-                if (
-                    (refGroup === null && groupParentID !== "0") ||
-                    (refGroup !== null && refGroup.id !== groupParentID)
-                ) {
-                    // Group has different parent, so move
-                    ref.moveTo(groupParentID === "0" ? vault : vault.findGroupByID(groupParentID));
-                }
+
+                consumeGroupFacade(vault.findGroupByID(groupFacade.id), groupFacade);
+                return false; // Group processed, remove from the list
+            });
+
+            if (originalLength === groupsLeft.length) {
+                const ids = groupsLeft.map(group => group.id).join(", ");
+                throw new Error(`Processing facade stalled: groups not resolvable: ${ids}`);
             }
-            consumeGroupFacade(vault.findGroupByID(groupFacade.id), groupFacade);
-            return false; // remove from loop - done
-        });
-        if (originalLength === groupsLeft.length) {
-            const ids = groupsLeft.map((group) => group.id);
-            throw new Error(`Processing facade stalled: groups not resolveable: ${ids.join(", ")}`);
         }
     }
-    // Handle entry removal
-    if (!mergeMode) {
-        currentEntries.forEach((currentEntryFacade) => {
-            const existing = entries.find((entry) => entry.id === currentEntryFacade.id);
-            if (!existing) {
-                // Removed, so delete
-                const entry = vault.findEntryByID(currentEntryFacade.id);
-                if (entry) {
-                    entry.delete();
+
+    function handleEntryRemoval() {
+        if (!mergeMode) {
+            currentEntries.forEach((currentEntryFacade) => {
+                if (!entries.some(entry => entry.id === currentEntryFacade.id)) {
+                    const targetEntry = vault.findEntryByID(currentEntryFacade.id);
+                    if (targetEntry) targetEntry.delete();
                 }
-            }
-        });
+            });
+        }
     }
-    // Update facade properties after entries deletion
-    currentEntries = getEntriesFacades(vault);
-    // Manage other entry operations
-    let entriesLeft = [...entries];
-    entriesLeft = entriesLeft.filter((entryRaw) => {
-        const entryFacade = Object.assign({}, entryRaw);
-        const entryIDTargetedNew = idSignifiesNew(entryFacade.id, mergeMode);
-        if (!entryFacade.id || entryIDTargetedNew) {
-            let targetGroupID = entryFacade.parentID;
-            if (idSignifiesNew(targetGroupID, mergeMode)) {
-                if (newIDLookup[targetGroupID]) {
-                    targetGroupID = newIDLookup[targetGroupID];
+
+    function processEntries() {
+        let entriesLeft = [...entries];
+        entriesLeft = entriesLeft.filter((entryRaw) => {
+            const entryFacade = { ...entryRaw };
+            const entryIDTargetedNew = idSignifiesNew(entryFacade.id, mergeMode);
+
+            if (!entryFacade.id || entryIDTargetedNew) {
+                let targetGroupID = entryFacade.parentID;
+                if (idSignifiesNew(targetGroupID, mergeMode)) {
+                    targetGroupID = newIDLookup[targetGroupID] || targetGroupID;
+                }
+
+                const targetGroup = vault.findGroupByID(targetGroupID);
+                if (targetGroup) {
+                    const newEntry = targetGroup.createEntry();
+                    if (entryIDTargetedNew) {
+                        newIDLookup[entryFacade.id] = newEntry.id;
+                    }
+                    entryFacade.id = newEntry.id;
+                    if (entryFacade.type) {
+                        newEntry.setAttribute(FacadeType, entryFacade.type);
+                    }
                 } else {
-                    // No parent created yet, stalled
-                    return true; // keep in loop - not ready
+                    return true; // Group not ready, stall this entry
+                }
+            } else {
+                const refEntry = vault.findEntryByID(entryFacade.id);
+                const refGroup = refEntry.getGroup();
+                if (refGroup.id !== entryFacade.parentID) {
+                    refEntry.moveToGroup(vault.findGroupByID(entryFacade.parentID));
                 }
             }
-            // Handle entry addition
-            const targetGroup = vault.findGroupByID(targetGroupID);
-            const newEntry = targetGroup.createEntry();
-            if (entryIDTargetedNew) {
-                // Not used at the moment, but if references towards
-                // entries are needed later, this provides the lookup
-                newIDLookup[`${entryFacade.id}`] = newEntry.id;
-            }
-            entryFacade.id = newEntry.id;
-            if (entryFacade.type) {
-                newEntry.setAttribute(FacadeType, entryFacade.type);
-            }
-        } else {
-            if (!currentEntries.find((entry) => entry.id === entryRaw.id)) {
-                // Entry had an ID which is now gone, so it was removed
-                return;
-            }
-            // Handle entry move
-            const ref = vault.findEntryByID(entryFacade.id);
-            const refGroup = ref.getGroup();
-            if (refGroup.id !== entryFacade.parentID) {
-                // Entry has different group, so move
-                ref.moveToGroup(vault.findGroupByID(entryFacade.parentID));
-            }
-        }
-        const entryToUpdate = vault.findEntryByID(entryFacade.id);
-        consumeEntryFacade(entryToUpdate, entryFacade);
-        return false; // done - remove
-    });
-    // Check attributes
-    Object.keys(currentAttributes)
-        .filter((attr) => !attributes.hasOwnProperty(attr))
-        .forEach((attr) => {
-            // Remove missing
-            vault.deleteAttribute(attr);
+
+            const entryToUpdate = vault.findEntryByID(entryFacade.id);
+            consumeEntryFacade(entryToUpdate, entryFacade);
+            return false; // Entry processed, remove from the list
         });
-    Object.keys(attributes).forEach((attr) => {
-        // Skip this attribute if it's the attachments key
-        if (attr === Vault.Attribute.AttachmentsKey && mergeMode) return;
-        if (!currentAttributes[attr] || currentAttributes[attr] !== attributes[attr]) {
-            // Different value
-            vault.setAttribute(attr, attributes[attr]);
-        }
-    });
+    }
+
+    function handleAttributes() {
+        Object.keys(currentAttributes)
+            .filter(attr => !attributes.hasOwnProperty(attr))
+            .forEach(attr => vault.deleteAttribute(attr));
+
+        Object.keys(attributes).forEach(attr => {
+            if (attr !== Vault.Attribute.AttachmentsKey || !mergeMode) {
+                if (!currentAttributes[attr] || currentAttributes[attr] !== attributes[attr]) {
+                    vault.setAttribute(attr, attributes[attr]);
+                }
+            }
+        });
+    }
+
+    handleGroupRemoval();
+    currentGroups = getGroupsFacades(vault); // Update facade properties after groups deletion
+    processGroups();
+    handleEntryRemoval();
+    currentEntries = getEntriesFacades(vault); // Update facade properties after entries deletion
+    processEntries();
+    handleAttributes();
 }
 
 /**

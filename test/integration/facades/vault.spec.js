@@ -52,6 +52,46 @@ describe("Vault facades", function () {
                     expect(this.vault.findEntryByID(entryAID)).to.be.null;
                 });
 
+                it("supports deleting entry attributes and ensures they are not recreated when adding a new one", function () {
+                    const facade = createVaultFacade(this.vault);
+                    const entryAID = this.entryA.id;
+                    const targetEntryIndex = facade.entries.findIndex(
+                        (entryFacade) => entryFacade.id === entryAID
+                    );
+
+                    const targetFieldIndex = facade.entries[targetEntryIndex].fields.findIndex(
+                        (field) => field.property === "test_attr"
+                    );
+                    expect(this.vault.findEntryByID(entryAID)).to.be.an.instanceOf(Entry);
+                    expect(this.vault.findEntryByID(entryAID).getAttribute("test_attr")).to.equal(
+                        "1234"
+                    );
+
+                    facade.entries[targetEntryIndex].fields.splice(targetFieldIndex, 1);
+                    consumeVaultFacade(this.vault, facade);
+                    expect(this.vault.findEntryByID(entryAID).getAttribute("test_attr")).to.be
+                        .undefined;
+
+                    // add a new field
+                    const newField = createFieldDescriptor(
+                        null,
+                        "Test",
+                        "attribute",
+                        "test_attr_3"
+                    );
+                    newField.value = "new value";
+                    facade.entries[targetEntryIndex].fields.push(newField);
+                    consumeVaultFacade(this.vault, facade);
+                    expect(this.vault.findEntryByID(entryAID).getAttribute("test_attr_3")).to.equal(
+                        "new value"
+                    );
+                    expect(this.vault.findEntryByID(entryAID).getAttribute("test_attr")).to.be
+                        .undefined;
+
+                    // console.log("attribut ",this.vault.findEntryByID(entryAID).getAttribute("test_attr"));
+                    // console.log("attribut 3",this.vault.findEntryByID(entryAID).getAttribute("test_attr_3"));
+                });
+
                 it("supports moving entries", function () {
                     const facade = createVaultFacade(this.vault);
                     const targetEntryIndex = facade.entries.findIndex(

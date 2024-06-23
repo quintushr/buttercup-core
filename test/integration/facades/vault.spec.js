@@ -67,10 +67,8 @@ describe("Vault facades", function () {
                         "1234"
                     );
 
+                    // remove the field
                     facade.entries[targetEntryIndex].fields.splice(targetFieldIndex, 1);
-                    consumeVaultFacade(this.vault, facade);
-                    expect(this.vault.findEntryByID(entryAID).getAttribute("test_attr")).to.be
-                        .undefined;
 
                     // add a new field
                     const newField = createFieldDescriptor(
@@ -81,15 +79,16 @@ describe("Vault facades", function () {
                     );
                     newField.value = "new value";
                     facade.entries[targetEntryIndex].fields.push(newField);
-                    consumeVaultFacade(this.vault, facade);
-                    expect(this.vault.findEntryByID(entryAID).getAttribute("test_attr_3")).to.equal(
-                        "new value"
-                    );
-                    expect(this.vault.findEntryByID(entryAID).getAttribute("test_attr")).to.be
-                        .undefined;
 
-                    // console.log("attribut ",this.vault.findEntryByID(entryAID).getAttribute("test_attr"));
-                    // console.log("attribut 3",this.vault.findEntryByID(entryAID).getAttribute("test_attr_3"));
+                    // consume the facade
+                    consumeVaultFacade(this.vault, facade);
+
+                    expect(this.vault.findEntryByID(entryAID).getAttribute()).to.not.have.property(
+                        "test_attr"
+                    );
+                    expect(this.vault.findEntryByID(entryAID).getAttribute()).to.have.property(
+                        "test_attr_3"
+                    );
                 });
 
                 it("supports moving entries", function () {

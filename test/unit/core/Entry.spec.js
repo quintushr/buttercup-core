@@ -146,17 +146,43 @@ describe("core/Entry", function () {
                     expect(changes[0]).to.have.property("value").that.is.null;
                 });
 
-                it("contains property creations", function () {
-                    this.entry.deleteProperty("username");
+                it("contains attribute creations", function () {
+                    this.entry.setAttribute("test_attr", "test_attr_val");
                     const changes = this.entry
                         .getChanges()
                         .filter(
                             (item) =>
                                 item.type === EntryChangeType.Created &&
-                                item.property === "username"
+                                item.property === "test_attr"
+                        );
+                    console.log(this.entry.getChanges());
+                    expect(changes).to.have.lengthOf(1);
+                    expect(changes[0].property).to.equal("test_attr");
+                });
+
+                it("contains attribute deletions", function () {
+                    this.entry.deleteProperty("attrib");
+                    const changes = this.entry
+                        .getChanges()
+                        .filter(
+                            (item) =>
+                                item.type === EntryChangeType.Deleted && item.property === "attrib"
                         );
                     expect(changes).to.have.lengthOf(1);
-                    expect(changes[0]).to.have.property("value", "tony");
+                    expect(changes[0]).to.have.property("value").that.is.null;
+                });
+
+                it("contains property creations", function () {
+                    this.entry.setProperty("test_prop", "test_val");
+                    const changes = this.entry
+                        .getChanges()
+                        .filter(
+                            (item) =>
+                                item.type === EntryChangeType.Created &&
+                                item.property === "test_prop"
+                        );
+                    expect(changes).to.have.lengthOf(1);
+                    expect(changes[0].property).to.equal("test_prop");
                 });
             });
 

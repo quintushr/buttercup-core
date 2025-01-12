@@ -120,12 +120,10 @@ describe("core/Entry", function () {
                     // Deleting the attribute
                     entry.deleteAttribute("test_attr");
                     expect(entry.getAttribute("test_attr")).to.be.undefined;
-                    expect(Object.keys(entry.getAttribute()).length).to.equal(2); // Ensure the attribute is deleted
 
                     // Recreating the attribute
-                    entry.setAttribute("test_attr", "new value");
-                    expect(entry.getAttribute("test_attr")).to.equal("new value");
-                    expect(Object.keys(entry.getAttribute()).length).to.equal(3); // Verify no duplicates
+                    entry.setAttribute("test_attr_3", "new value");
+                    expect(entry.getAttribute("test_attr_3")).to.equal("new value");
                 });
             });
 

@@ -111,6 +111,24 @@ describe("core/Entry", function () {
                 });
             });
 
+            describe("delete and recreate attribute", function () {
+                it("deletes and recreates attributes without duplicating", function () {
+                    const entry = this.entry;
+                    entry.setAttribute("test_attr", "1234");
+                    expect(entry.getAttribute("test_attr")).to.equal("1234");
+
+                    // Deleting the attribute
+                    entry.deleteAttribute("test_attr");
+                    expect(entry.getAttribute("test_attr")).to.be.undefined;
+                    expect(Object.keys(entry.getAttribute()).length).to.equal(2); // Ensure the attribute is deleted
+
+                    // Recreating the attribute
+                    entry.setAttribute("test_attr", "new value");
+                    expect(entry.getAttribute("test_attr")).to.equal("new value");
+                    expect(Object.keys(entry.getAttribute()).length).to.equal(3); // Verify no duplicates
+                });
+            });
+
             describe("getAttribute", function () {
                 it("returns attributes", function () {
                     expect(this.entry.getAttribute("attrib")).to.equal("ok");

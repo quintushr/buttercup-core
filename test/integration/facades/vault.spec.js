@@ -145,6 +145,62 @@ describe("Vault facades", function () {
                     expect(this.vault.findGroupByID(bottomGroupID)).to.be.null;
                 });
 
+                it("supports deleting and recreating entry attributes without duplicating", function () {
+                    const facade = createVaultFacade(this.vault);
+                    const entryAID = this.entryA.id;
+                    const targetEntryIndex = facade.entries.findIndex(
+                        (entryFacade) => entryFacade.id === entryAID
+                    );
+
+                    // Initial verification of attributes
+                    let updatedEntry = this.vault.findEntryByID(entryAID);
+                    console.log("Initial attributes:", updatedEntry.getAttribute());
+                    expect(Object.keys(updatedEntry.getAttribute()).length).to.equal(2); // Verify initial number of attributes
+
+                    // Deleting the attribute
+                    const targetFieldIndex = facade.entries[targetEntryIndex].fields.findIndex(
+                        (field) => field.property === "test_attr"
+                    );
+                    facade.entries[targetEntryIndex].fields.splice(targetFieldIndex, 1);
+
+                    // Consume the facade after deletion
+                    consumeVaultFacade(this.vault, facade);
+                    let updatedEntryWithDeletion = this.vault.findEntryByID(entryAID);
+                    console.log(
+                        "Attributes after deletion:",
+                        updatedEntryWithDeletion.getAttribute()
+                    );
+                    expect(updatedEntryWithDeletion.getAttribute()).to.not.have.property(
+                        "test_attr"
+                    );
+
+                    // Adding a new attribute with the same name
+                    const newField = createFieldDescriptor(
+                        null,
+                        "Test",
+                        "attribute",
+                        "test_attr_3"
+                    );
+                    newField.value = "new value";
+                    facade.entries[targetEntryIndex].fields.push(newField);
+
+                    // Consume the facade after addition
+                    consumeVaultFacade(this.vault, facade);
+
+                    let updatedEntryAfterAddition = this.vault.findEntryByID(entryAID);
+                    console.log(
+                        "Attributes after addition:",
+                        updatedEntryAfterAddition.getAttribute()
+                    );
+                    expect(updatedEntryWithDeletion.getAttribute()).to.have.property("test_attr_3");
+                    expect(
+                        updatedEntryAfterAddition.getAttribute("test_attr_3")
+                    ).to.not.have.property("new value");
+                    expect(updatedEntryWithDeletion.getAttribute()).to.not.have.property(
+                        "test_attr"
+                    );
+                });
+
                 it("supports moving groups", function () {
                     const facade = createVaultFacade(this.vault);
                     const otherGroupID = this.otherGroup.id;
